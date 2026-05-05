@@ -66,13 +66,13 @@ function checkStrength(val) {
 }
 
 // ===== SHOW DASHBOARD =====
-function showDashboard(email) {
+function showDashboard(name) {
     document.getElementById('authWrapper').style.display = 'none';
     document.getElementById('dashboardWrapper').classList.add('active');
     document.body.style.alignItems = 'stretch';
 
     // Personalize
-    const name = email.split('@')[0];
+    if (!name) name = 'Admin';
     const displayName = name.charAt(0).toUpperCase() + name.slice(1);
     document.getElementById('dashName').textContent = displayName;
     document.getElementById('dashAvatar').textContent = displayName.substring(0, 2).toUpperCase();
@@ -171,6 +171,8 @@ function handleLogout() {
     
     // Clear auth and UI data
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminEmail');
+    localStorage.removeItem('adminName');
     const grid = document.querySelector('.opportunities-grid');
     if (grid) grid.innerHTML = '<!-- Opportunities will be loaded dynamically from the backend -->';
     
@@ -782,7 +784,14 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         if (response.ok) {
             showToast('Login successful! Redirecting...');
             localStorage.setItem('adminToken', data.access_token);
-            setTimeout(() => showDashboard(email), 1200);
+            if (data.admin) {
+                if (data.admin.email) localStorage.setItem('adminEmail', data.admin.email);
+                if (data.admin.name) localStorage.setItem('adminName', data.admin.name);
+            } else {
+                localStorage.setItem('adminEmail', email);
+                localStorage.setItem('adminName', email.split('@')[0]);
+            }
+            setTimeout(() => showDashboard(localStorage.getItem('adminName')), 1200);
         } else {
             showError('loginPasswordErr', data.message || 'Login failed');
             document.getElementById('loginPassword').classList.add('error');
@@ -889,4 +898,19 @@ document.querySelectorAll('input').forEach(input => {
 window.addEventListener('resize', () => {
     const toggle = document.getElementById('menuToggle');
     if (toggle) toggle.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+});
+
+// Check auth on load
+document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+        const name = localStorage.getItem('adminName') || localStorage.getItem('adminEmail')?.split('@')[0] || 'Admin';
+        showDashboard(name);
+        
+        // Check which tab is active and load data if needed
+        const activeTab = document.querySelector('.nav-item.active');
+        if (activeTab && activeTab.getAttribute('data-page') === 'opportunity') {
+            fetchOpportunities();
+        }
+    }
 });
