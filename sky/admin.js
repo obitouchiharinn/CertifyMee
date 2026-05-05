@@ -134,23 +134,33 @@ async function fetchOpportunities() {
                     const footerHtml = `
                         <div class="opportunity-footer">
                             <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
-                            <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="view-course-btn edit-opp-btn" style="width: auto; padding: 8px 16px; background: white; color: var(--qf-green); border: 1px solid var(--qf-green);">Edit</button>
+                                <button class="view-course-btn view-opp-btn" style="width: auto; padding: 8px 16px;">View Details</button>
+                            </div>
                         </div>
                     `;
 
                     card.innerHTML = headerHtml + skillsHtml + footerHtml;
 
-                    const viewBtn = card.querySelector('.view-course-btn');
+                    const viewBtn = card.querySelector('.view-opp-btn');
+                    const editBtn = card.querySelector('.edit-opp-btn');
+                    
                     viewBtn.addEventListener('click', function() {
                         openOpportunityDetails(opp.name, {
                             duration: durationStr,
                             startDate: startDateStr,
                             description: descStr,
                             skills: skills,
+                            category: opp.category,
                             applicants: opp.max_applicants || 0,
                             futureOpportunities: opp.future_opportunities || '',
                             prerequisites: ''
                         });
+                    });
+                    
+                    editBtn.addEventListener('click', function() {
+                        openEditOpportunityModal(opp);
                     });
 
                     grid.appendChild(card);
@@ -341,7 +351,10 @@ function openOpportunityDetails(title, details) {
     document.getElementById('opportunityDetailApplicants').textContent = details.applicants;
     document.getElementById('opportunityDetailDescription').textContent = details.description;
     document.getElementById('opportunityDetailFuture').textContent = details.futureOpportunities;
-    document.getElementById('opportunityDetailPrereqs').textContent = details.prerequisites;
+    document.getElementById('opportunityDetailPrereqs').textContent = details.prerequisites || 'None';
+    if(document.getElementById('opportunityDetailCategory')) {
+        document.getElementById('opportunityDetailCategory').textContent = details.category || 'N/A';
+    }
     
     const skillsContainer = document.getElementById('opportunityDetailSkills');
     skillsContainer.innerHTML = '';
@@ -405,6 +418,28 @@ document.getElementById('collaboratorCoursesModal').addEventListener('click', fu
 // ===== OPPORTUNITY MODAL =====
 function openOpportunityModal() {
     document.getElementById('opportunityModal').classList.add('active');
+    document.querySelector('#opportunityModal h3').textContent = 'Add New Opportunity';
+    const form = document.getElementById('opportunityForm');
+    form.removeAttribute('data-opp-id');
+    form.reset();
+    form.querySelector('button[type="submit"]').textContent = 'Create Opportunity';
+}
+
+function openEditOpportunityModal(opp) {
+    document.getElementById('opportunityModal').classList.add('active');
+    document.querySelector('#opportunityModal h3').textContent = 'Edit Opportunity';
+    const form = document.getElementById('opportunityForm');
+    form.setAttribute('data-opp-id', opp.id);
+    form.querySelector('button[type="submit"]').textContent = 'Update Opportunity';
+    
+    document.getElementById('oppName').value = opp.name || '';
+    document.getElementById('oppDuration').value = opp.duration || '';
+    document.getElementById('oppStartDate').value = opp.start_date || '';
+    document.getElementById('oppDescription').value = opp.description || '';
+    document.getElementById('oppSkills').value = opp.skills || '';
+    document.getElementById('oppCategory').value = opp.category || '';
+    document.getElementById('oppFuture').value = opp.future_opportunities || '';
+    document.getElementById('oppMaxApplicants').value = opp.max_applicants || '';
 }
 
 function closeOpportunityModal() {
@@ -445,9 +480,13 @@ document.getElementById('opportunityModal').addEventListener('click', function(e
                 return;
             }
 
+            const oppId = this.getAttribute('data-opp-id');
+            const method = oppId ? 'PUT' : 'POST';
+            const url = oppId ? `http://127.0.0.1:5000/api/opportunities/${oppId}` : 'http://127.0.0.1:5000/api/opportunities';
+
             try {
-                const response = await fetch('http://127.0.0.1:5000/api/opportunities', {
-                    method: 'POST',
+                const response = await fetch(url, {
+                    method: method,
                     headers: { 
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
@@ -467,65 +506,11 @@ document.getElementById('opportunityModal').addEventListener('click', function(e
                 const data = await response.json();
                 
                 if (response.ok) {
-                    showToast('Opportunity created successfully!');
-                    
-                    // parse skills for frontend display
-                    const skills = skillsRaw.split(',').map(s => s.trim()).filter(Boolean);
-
-                    // create opportunity card element
-                    const card = document.createElement('div');
-                    card.className = 'opportunity-card';
-
-                    // header and meta
-                    const headerHtml = `
-                        <div class="opportunity-card-header">
-                            <h5>${escapeHtml(name)}</h5>
-                            <div class="opportunity-meta">
-                                <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(duration)}</span>
-                                <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(startDate)}</span>
-                            </div>
-                        </div>
-                        <p class="opportunity-description">${escapeHtml(description)}</p>
-                    `;
-
-                    // skills tags
-                    const skillsHtml = `<div class="opportunity-skills"><div class="opportunity-skills-label">Skills You'll Gain</div><div class="skills-tags">
-                        ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
-                    </div></div>`;
-
-                    // footer
-                    const applicantsCount = maxApplicants ? `${parseInt(maxApplicants,10)} applicants` : '0 applicants';
-                    const footerHtml = `
-                        <div class="opportunity-footer">
-                            <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
-                            <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
-                        </div>
-                    `;
-
-                    card.innerHTML = headerHtml + skillsHtml + footerHtml;
-
-                    // wire up the View Details button to open details modal
-                    const viewBtn = card.querySelector('.view-course-btn');
-                    viewBtn.addEventListener('click', function() {
-                        openOpportunityDetails(name, {
-                            duration: duration,
-                            startDate: startDate,
-                            description: description,
-                            skills: skills,
-                            applicants: maxApplicants ? parseInt(maxApplicants,10) : 0,
-                            futureOpportunities: futureOpportunities,
-                            prerequisites: ''
-                        });
-                    });
-
-                    // append to grid
-                    const grid = document.querySelector('.opportunities-grid');
-                    if (grid) grid.appendChild(card);
-
+                    showToast(oppId ? 'Opportunity updated successfully!' : 'Opportunity created successfully!');
                     closeOpportunityModal();
-                    this.reset();
+                    fetchOpportunities(); // fetch and redraw to reflect changes immediately
                 } else {
-                    showToast('Error: ' + (data.message || 'Failed to create opportunity'));
+                    showToast('Error: ' + (data.message || 'Failed to process opportunity'));
                 }
             } catch (error) {
                 showToast('Server error. Is the backend running?');
