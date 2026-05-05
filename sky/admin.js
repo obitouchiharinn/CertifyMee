@@ -135,8 +135,9 @@ async function fetchOpportunities() {
                         <div class="opportunity-footer">
                             <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
                             <div style="display: flex; gap: 8px;">
-                                <button class="view-course-btn edit-opp-btn" style="width: auto; padding: 8px 16px; background: white; color: var(--qf-green); border: 1px solid var(--qf-green);">Edit</button>
-                                <button class="view-course-btn view-opp-btn" style="width: auto; padding: 8px 16px;">View Details</button>
+                                <button class="view-course-btn delete-opp-btn" style="width: auto; padding: 8px 12px; background: white; color: #dc3545; border: 1px solid #dc3545;">Delete</button>
+                                <button class="view-course-btn edit-opp-btn" style="width: auto; padding: 8px 12px; background: white; color: var(--qf-green); border: 1px solid var(--qf-green);">Edit</button>
+                                <button class="view-course-btn view-opp-btn" style="width: auto; padding: 8px 12px;">View</button>
                             </div>
                         </div>
                     `;
@@ -145,6 +146,7 @@ async function fetchOpportunities() {
 
                     const viewBtn = card.querySelector('.view-opp-btn');
                     const editBtn = card.querySelector('.edit-opp-btn');
+                    const deleteBtn = card.querySelector('.delete-opp-btn');
                     
                     viewBtn.addEventListener('click', function() {
                         openOpportunityDetails(opp.name, {
@@ -161,6 +163,29 @@ async function fetchOpportunities() {
                     
                     editBtn.addEventListener('click', function() {
                         openEditOpportunityModal(opp);
+                    });
+                    
+                    deleteBtn.addEventListener('click', async function() {
+                        if (confirm('Are you sure you want to delete this opportunity? This action cannot be undone.')) {
+                            try {
+                                const response = await fetch(`http://127.0.0.1:5000/api/opportunities/${opp.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (response.ok) {
+                                    showToast('Opportunity deleted successfully!');
+                                    card.remove();
+                                    if (grid.querySelectorAll('.opportunity-card').length === 0) {
+                                        grid.innerHTML = '<p style="text-align: center; color: var(--qf-text-light); grid-column: 1/-1;">No opportunities found. Create one to get started!</p>';
+                                    }
+                                } else {
+                                    const data = await response.json();
+                                    showToast('Error: ' + (data.message || 'Failed to delete'));
+                                }
+                            } catch (err) {
+                                showToast('Server error. Failed to delete opportunity.');
+                            }
+                        }
                     });
 
                     grid.appendChild(card);
