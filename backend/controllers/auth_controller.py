@@ -24,3 +24,11 @@ def forgot_password():
         
     result, status_code = AuthService.forgot_password(data)
     return jsonify(result), status_code
+
+def reset_password():
+    data = request.get_json()
+    if not data:
+        return jsonify({'message': 'No input data provided'}), 400
+        
+    result, status_code = AuthService.reset_password(data)
+    return jsonify(result), status_code

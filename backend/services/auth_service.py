@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token
 from models.admin import Admin
 from database.db import db
 import re
+import os
 
 class AuthService:
     
@@ -62,6 +63,41 @@ class AuthService:
         }, 200
 
     @staticmethod
+    def send_reset_email(to_email, reset_link):
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import os
+        
+        sender_email = os.environ.get('MAIL_USERNAME')
+        sender_password = os.environ.get('MAIL_PASSWORD')
+        
+        if not sender_email or not sender_password:
+            print("[WARNING] MAIL_USERNAME or MAIL_PASSWORD not set in .env. Falling back to console log.")
+            print(f"\n[INTERNAL LOG] RESET LINK GENERATED FOR {to_email}:\n{reset_link}\n")
+            return False
+            
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = to_email
+            msg['Subject'] = "Sky Foundation - Password Reset Request"
+            
+            body = f"Hello,\n\nWe received a request to reset your password for the Sky Foundation Admin Portal.\n\nPlease click the link below to set a new password:\n{reset_link}\n\nThis link will expire in 1 hour.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nSky Foundation Team"
+            msg.attach(MIMEText(body, 'plain'))
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+            server.quit()
+            print(f"[INFO] Password reset email successfully sent to {to_email}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to send email: {e}")
+            return False
+
+    @staticmethod
     def forgot_password(data):
         email = data.get('email')
         if not email:
@@ -71,9 +107,45 @@ class AuthService:
         
         # Always return success to prevent email enumeration
         if admin:
-            # Generate a reset token (in a real app, send an email)
-            # For this MVP, we just simulate success
+            # Generate a reset token
             reset_token = create_access_token(identity=str(admin.id), expires_delta=timedelta(hours=1))
-            return {'message': 'If the email exists, a reset link will be sent.', 'reset_token': reset_token}, 200
+            
+            # The link must point to your frontend (admin.html), NOT the backend API (port 5000).
+            # Assuming you are using Live Server (port 5500) or opening the file directly.
+            # You can change this to match exactly what is in your browser's address bar when viewing admin.html.
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://127.0.0.1:5500/sky/admin.html')
+            reset_link = f"{frontend_url}?token={reset_token}"
+            
+            # Send the email
+            AuthService.send_reset_email(email, reset_link)
             
         return {'message': 'If the email exists, a reset link will be sent.'}, 200
+
+    @staticmethod
+    def reset_password(data):
+        token = data.get('token')
+        new_password = data.get('new_password')
+        
+        if not token or not new_password:
+            return {'message': 'Missing token or new password'}, 400
+            
+        from flask_jwt_extended import decode_token
+        
+        try:
+            decoded = decode_token(token)
+            admin_id = decoded['sub']
+            
+            admin = Admin.query.get(admin_id)
+            if not admin:
+                return {'message': 'Invalid token'}, 400
+                
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            admin.password = hashed_password
+            db.session.commit()
+            
+            return {'message': 'Password has been reset successfully.'}, 200
+        except Exception as e:
+            err_str = str(e).lower()
+            if 'expired' in err_str:
+                return {'message': 'Reset link has expired. Please request a new one.'}, 400
+            return {'message': 'Invalid or expired reset link.'}, 400

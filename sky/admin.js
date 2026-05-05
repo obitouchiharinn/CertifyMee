@@ -881,8 +881,9 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
         const data = await response.json();
         
         if (response.ok) {
-            showToast('Reset link sent to your email!');
+            showToast(data.message || 'If the email exists, a reset link will be sent.');
             this.reset();
+            setTimeout(() => showPage('loginPage'), 2000);
         } else {
             showError('forgotEmailErr', data.message || 'Failed to send link');
             document.getElementById('forgotEmail').classList.add('error');
@@ -893,6 +894,44 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
     }
     
     generateCaptcha('forgot');
+});
+
+// ===== RESET PASSWORD =====
+document.getElementById('resetPasswordForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearAllErrors('resetPasswordForm');
+    let valid = true;
+    
+    const token = document.getElementById('resetTokenInput').value;
+    const password = document.getElementById('resetPassword').value.trim();
+    const confirmPassword = document.getElementById('resetConfirmPassword').value.trim();
+
+    if (!password || password.length < 8) { showError('resetPasswordErr'); document.getElementById('resetPassword').classList.add('error'); valid = false; }
+    if (!confirmPassword || password !== confirmPassword) { showError('resetConfirmPasswordErr'); document.getElementById('resetConfirmPassword').classList.add('error'); valid = false; }
+
+    if (!valid) { shakeForm('resetPasswordForm'); return; }
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/api/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token, new_password: password })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast(data.message || 'Password reset successfully!');
+            this.reset(); checkStrength('');
+            // Remove token from URL without reloading
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setTimeout(() => showPage('loginPage'), 1500);
+        } else {
+            showToast('Error: ' + (data.message || 'Failed to reset password.'));
+            shakeForm('resetPasswordForm');
+        }
+    } catch (error) {
+        showToast('Server error. Is the backend running?');
+    }
 });
 
 // Clear errors on input
@@ -912,6 +951,15 @@ window.addEventListener('resize', () => {
 
 // Check auth on load
 document.addEventListener('DOMContentLoaded', () => {
+    // Check for reset token in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenParams = urlParams.get('token');
+    if (tokenParams) {
+        document.getElementById('resetTokenInput').value = tokenParams;
+        showPage('resetPasswordPage');
+        return;
+    }
+
     const token = localStorage.getItem('adminToken');
     if (token) {
         const name = localStorage.getItem('adminName') || localStorage.getItem('adminEmail')?.split('@')[0] || 'Admin';
