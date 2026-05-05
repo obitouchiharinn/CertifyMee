@@ -83,10 +83,97 @@ function showDashboard(email) {
     }
 }
 
+async function fetchOpportunities() {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+    
+    const grid = document.querySelector('.opportunities-grid');
+    if (!grid) return;
+    
+    try {
+        const response = await fetch('http://127.0.0.1:5000/api/opportunities', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            grid.innerHTML = ''; // clear current items
+            
+            if (data.opportunities && data.opportunities.length > 0) {
+                data.opportunities.forEach(opp => {
+                    const card = document.createElement('div');
+                    card.className = 'opportunity-card';
+                    
+                    const durationStr = opp.duration ? opp.duration : 'N/A';
+                    const startDateStr = opp.start_date ? opp.start_date : 'N/A';
+                    const descStr = opp.description ? opp.description : '';
+                    
+                    const skills = opp.skills ? opp.skills.split(',').map(s => s.trim()).filter(Boolean) : [];
+                    
+                    function escapeHtml(str) {
+                        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    }
+                    
+                    const headerHtml = `
+                        <div class="opportunity-card-header">
+                            <h5>${escapeHtml(opp.name)}</h5>
+                            <div class="opportunity-meta">
+                                <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(durationStr)}</span>
+                                <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(startDateStr)}</span>
+                            </div>
+                        </div>
+                        <p class="opportunity-description">${escapeHtml(descStr)}</p>
+                    `;
+
+                    const skillsHtml = `<div class="opportunity-skills"><div class="opportunity-skills-label">Skills You'll Gain</div><div class="skills-tags">
+                        ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
+                    </div></div>`;
+
+                    const applicantsCount = opp.max_applicants ? `${opp.max_applicants} applicants` : '0 applicants';
+                    const footerHtml = `
+                        <div class="opportunity-footer">
+                            <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
+                            <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
+                        </div>
+                    `;
+
+                    card.innerHTML = headerHtml + skillsHtml + footerHtml;
+
+                    const viewBtn = card.querySelector('.view-course-btn');
+                    viewBtn.addEventListener('click', function() {
+                        openOpportunityDetails(opp.name, {
+                            duration: durationStr,
+                            startDate: startDateStr,
+                            description: descStr,
+                            skills: skills,
+                            applicants: opp.max_applicants || 0,
+                            futureOpportunities: opp.future_opportunities || '',
+                            prerequisites: ''
+                        });
+                    });
+
+                    grid.appendChild(card);
+                });
+            } else {
+                grid.innerHTML = '<p style="text-align: center; color: var(--qf-text-light); grid-column: 1/-1;">No opportunities found. Create one to get started!</p>';
+            }
+        }
+    } catch (err) {
+        console.error('Failed to fetch opportunities', err);
+    }
+}
+
 function handleLogout() {
     document.getElementById('dashboardWrapper').classList.remove('active');
     document.getElementById('authWrapper').style.display = 'flex';
     document.body.style.alignItems = '';
+    
+    // Clear auth and UI data
+    localStorage.removeItem('adminToken');
+    const grid = document.querySelector('.opportunities-grid');
+    if (grid) grid.innerHTML = '<!-- Opportunities will be loaded dynamically from the backend -->';
+    
     showToast('Signed out successfully');
     showPage('loginPage');
 }
@@ -117,6 +204,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
         } else if (page === 'opportunity') {
             document.getElementById('opportunitySection').classList.add('active');
             document.getElementById('pageTitle').textContent = 'Opportunity Management';
+            fetchOpportunities();
         } else if (page === 'reports') {
             document.getElementById('reportsSection').classList.add('active');
             document.getElementById('pageTitle').textContent = 'Reports and Analytics';
@@ -329,7 +417,7 @@ document.getElementById('opportunityModal').addEventListener('click', function(e
 });
 
 // Handle opportunity form submission
-        document.getElementById('opportunityForm').addEventListener('submit', function(e) {
+        document.getElementById('opportunityForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
             // collect values
@@ -348,62 +436,98 @@ document.getElementById('opportunityModal').addEventListener('click', function(e
                 return;
             }
 
-            // parse skills
-            const skills = skillsRaw.split(',').map(s => s.trim()).filter(Boolean);
+            // check if we have the admin token
+            const token = localStorage.getItem('adminToken');
+            if (!token) {
+                showToast('You must be logged in to create an opportunity');
+                return;
+            }
 
-            // create opportunity card element
-            const card = document.createElement('div');
-            card.className = 'opportunity-card';
-
-            // header and meta
-            const headerHtml = `
-                <div class="opportunity-card-header">
-                    <h5>${escapeHtml(name)}</h5>
-                    <div class="opportunity-meta">
-                        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(duration)}</span>
-                        <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(startDate)}</span>
-                    </div>
-                </div>
-                <p class="opportunity-description">${escapeHtml(description)}</p>
-            `;
-
-            // skills tags
-            const skillsHtml = `<div class="opportunity-skills"><div class="opportunity-skills-label">Skills You'll Gain</div><div class="skills-tags">
-                ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
-            </div></div>`;
-
-            // footer
-            const applicantsCount = maxApplicants ? `${parseInt(maxApplicants,10)} applicants` : '0 applicants';
-            const footerHtml = `
-                <div class="opportunity-footer">
-                    <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
-                    <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
-                </div>
-            `;
-
-            card.innerHTML = headerHtml + skillsHtml + footerHtml;
-
-            // wire up the View Details button to open details modal
-            const viewBtn = card.querySelector('.view-course-btn');
-            viewBtn.addEventListener('click', function() {
-                openOpportunityDetails(name, {
-                    duration: duration,
-                    startDate: startDate,
-                    description: description,
-                    skills: skills,
-                    applicants: maxApplicants ? parseInt(maxApplicants,10) : 0,
-                    futureOpportunities: futureOpportunities,
-                    prerequisites: ''
+            try {
+                const response = await fetch('http://127.0.0.1:5000/api/opportunities', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        category: category,
+                        duration: duration,
+                        start_date: startDate,
+                        description: description,
+                        skills: skillsRaw,
+                        future_opportunities: futureOpportunities,
+                        max_applicants: maxApplicants ? parseInt(maxApplicants, 10) : null
+                    })
                 });
-            });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showToast('Opportunity created successfully!');
+                    
+                    // parse skills for frontend display
+                    const skills = skillsRaw.split(',').map(s => s.trim()).filter(Boolean);
 
-            // append to grid
-            const grid = document.querySelector('.opportunities-grid');
-            if (grid) grid.appendChild(card);
+                    // create opportunity card element
+                    const card = document.createElement('div');
+                    card.className = 'opportunity-card';
 
-            showToast('Opportunity created successfully!');
-            closeOpportunityModal();
-            this.reset();
+                    // header and meta
+                    const headerHtml = `
+                        <div class="opportunity-card-header">
+                            <h5>${escapeHtml(name)}</h5>
+                            <div class="opportunity-meta">
+                                <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(duration)}</span>
+                                <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(startDate)}</span>
+                            </div>
+                        </div>
+                        <p class="opportunity-description">${escapeHtml(description)}</p>
+                    `;
+
+                    // skills tags
+                    const skillsHtml = `<div class="opportunity-skills"><div class="opportunity-skills-label">Skills You'll Gain</div><div class="skills-tags">
+                        ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
+                    </div></div>`;
+
+                    // footer
+                    const applicantsCount = maxApplicants ? `${parseInt(maxApplicants,10)} applicants` : '0 applicants';
+                    const footerHtml = `
+                        <div class="opportunity-footer">
+                            <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
+                            <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
+                        </div>
+                    `;
+
+                    card.innerHTML = headerHtml + skillsHtml + footerHtml;
+
+                    // wire up the View Details button to open details modal
+                    const viewBtn = card.querySelector('.view-course-btn');
+                    viewBtn.addEventListener('click', function() {
+                        openOpportunityDetails(name, {
+                            duration: duration,
+                            startDate: startDate,
+                            description: description,
+                            skills: skills,
+                            applicants: maxApplicants ? parseInt(maxApplicants,10) : 0,
+                            futureOpportunities: futureOpportunities,
+                            prerequisites: ''
+                        });
+                    });
+
+                    // append to grid
+                    const grid = document.querySelector('.opportunities-grid');
+                    if (grid) grid.appendChild(card);
+
+                    closeOpportunityModal();
+                    this.reset();
+                } else {
+                    showToast('Error: ' + (data.message || 'Failed to create opportunity'));
+                }
+            } catch (error) {
+                showToast('Server error. Is the backend running?');
+            }
         });
 
         // small helper to avoid HTML injection when inserting text
@@ -632,7 +756,7 @@ function filterVerifiers() {
 }
 
 // ===== LOGIN =====
-document.getElementById('loginForm').addEventListener('submit', function(e) {
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('loginForm');
     let valid = true;
@@ -647,13 +771,32 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
 
     if (!valid) { shakeForm('loginForm'); return; }
 
-    showToast('Login successful! Redirecting...');
-    setTimeout(() => showDashboard(email), 1200);
+    try {
+        const response = await fetch('http://127.0.0.1:5000/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast('Login successful! Redirecting...');
+            localStorage.setItem('adminToken', data.access_token);
+            setTimeout(() => showDashboard(email), 1200);
+        } else {
+            showError('loginPasswordErr', data.message || 'Login failed');
+            document.getElementById('loginPassword').classList.add('error');
+            shakeForm('loginForm');
+        }
+    } catch (error) {
+        showToast('Server error. Is the backend running?');
+    }
+    
     generateCaptcha('login');
 });
 
 // ===== SIGNUP =====
-document.getElementById('signupForm').addEventListener('submit', function(e) {
+document.getElementById('signupForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('signupForm');
     let valid = true;
@@ -671,14 +814,33 @@ document.getElementById('signupForm').addEventListener('submit', function(e) {
     else if (captchaInput !== captchas.signup) { showError('signupCaptchaErr','Captcha does not match.'); valid = false; generateCaptcha('signup'); }
 
     if (!valid) { shakeForm('signupForm'); return; }
-    showToast('Account created successfully!');
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/api/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast('Account created successfully!');
+            this.reset(); checkStrength('');
+            setTimeout(() => showPage('loginPage'), 1500);
+        } else {
+            showError('signupEmailErr', data.message || 'Signup failed');
+            document.getElementById('signupEmail').classList.add('error');
+            shakeForm('signupForm');
+        }
+    } catch (error) {
+        showToast('Server error. Is the backend running?');
+    }
+    
     generateCaptcha('signup');
-    this.reset(); checkStrength('');
-    setTimeout(() => showPage('loginPage'), 1500);
 });
 
 // ===== FORGOT =====
-document.getElementById('forgotForm').addEventListener('submit', function(e) {
+document.getElementById('forgotForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('forgotForm');
     let valid = true;
@@ -690,9 +852,28 @@ document.getElementById('forgotForm').addEventListener('submit', function(e) {
     else if (captchaInput !== captchas.forgot) { showError('forgotCaptchaErr','Captcha does not match.'); valid = false; generateCaptcha('forgot'); }
 
     if (!valid) { shakeForm('forgotForm'); return; }
-    showToast('Reset link sent to your email!');
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/api/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast('Reset link sent to your email!');
+            this.reset();
+        } else {
+            showError('forgotEmailErr', data.message || 'Failed to send link');
+            document.getElementById('forgotEmail').classList.add('error');
+            shakeForm('forgotForm');
+        }
+    } catch (error) {
+        showToast('Server error. Is the backend running?');
+    }
+    
     generateCaptcha('forgot');
-    this.reset();
 });
 
 // Clear errors on input

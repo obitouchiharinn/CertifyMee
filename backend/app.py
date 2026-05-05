@@ -2,6 +2,7 @@ from flask import Flask
 from config import Config
 from database.db import db
 from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 
 # Import blueprints
 from routes.auth_routes import auth_bp
@@ -10,6 +11,7 @@ from routes.opportunity_routes import opp_bp
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    CORS(app)
 
     # Initialize extensions
     db.init_app(app)
